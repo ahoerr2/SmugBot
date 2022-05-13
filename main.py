@@ -3,6 +3,8 @@ import nextcord
 import time
 from nextcord.ext import commands
 import asyncio
+import youtube_dl
+
 print("Starting bot...")
 
 
@@ -10,6 +12,8 @@ bot = commands.Bot(command_prefix='$')
 game = nextcord.Game("with Python")
 usageInfo = '$pomodoro {Number of Sessions} {Pomodoro Time (min)} {Break Time (min)} {Long Break Time (min)}'
 usageInfoPlay = '$play [youtube url]'
+smugEmoji = bot.get_emoji(974757534894284851)
+youtube_dl.utils.bug_reports_message = lambda: ''
 
 """
 Make sure argument list is all valid number types and converts data to integers
@@ -98,6 +102,51 @@ async def on_message(message):
     await message.channel.send('Pong')
 """
 
+
+
+
+# Code snippet from https://github.com/Rapptz/discord.py/blob/master/examples/basic_voice.py
+YTDL_OPTIONS = {
+        'format': 'bestaudio/best',
+        'extractaudio': True,
+        'audioformat': 'mp3',
+        'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+        'restrictfilenames': True,
+        'noplaylist': True,
+        'nocheckcertificate': True,
+        'ignoreerrors': False,
+        'logtostderr': False,
+        'quiet': True,
+        'no_warnings': True,
+        'default_search': 'auto',
+        'source_address': '0.0.0.0',
+    }
+
+ytdl = youtube_dl.YoutubeDL(YTDL_OPTIONS)
+
+
+class YTDLSource(nextcord.PCMVolumeTransformer):
+    def __init__(self, source, *, data, volume=0.5):
+        super().__init__(source, volume)
+        self.data = data
+        self.title = data.get('title')
+        self.url = ""
+
+    @classmethod
+    async def from_url(cls, url, *, loop=None, stream=False):
+        loop = loop or asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+        if 'entries' in data:
+            # take first item from a playlist
+            data = data['entries'][0]
+        filename = data['title'] if stream else ytdl.prepare_filename(data)
+        return filename
+#End snippet
+
+
+
+
+
 @bot.command(name='play', help='Plays a song from a specific youtube link')
 async def play(ctx,*args) -> bool:
   
@@ -107,7 +156,7 @@ async def play(ctx,*args) -> bool:
 
   # Add to a join function
   if not ctx.message.author.voice:
-    await ctx.send('I would play the song...if you were in a voice channel <:hatkidsmug:972319774568775730>' + usageInfoPlay)
+    await ctx.send('I would play the song...if you were in a voice channel ')
     return False
 
   channel = ctx.message.author.voice.channel
@@ -116,9 +165,21 @@ async def play(ctx,*args) -> bool:
   # Join function end
   
   url = args[0]
-  await ctx.send('Playing: ' + url)
+  await ctx.send('Downloading video...')
+  meta = ytdl.extract_info(url, download=False)
+  #print(meta)
+  await ctx.send('Playing: ```{}```'.format( meta.get('title')))
   
   return True
+
+@bot.command(name='leave', help='Make the bot leave the voice channel')
+async def leave(ctx):
+  clientVC = ctx.message.guild.voice_client
+  if clientVC.is_connected():
+    await clientVC.disconnect()
+    return True
+  ctx.send('Can\'t leave a voice channel I\'m not in')
+  return False
   
 
 @bot.command()
